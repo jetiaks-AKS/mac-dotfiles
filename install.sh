@@ -4,13 +4,13 @@ set -e
 
 SCRIPT_DIR="${0:A:h}"
 ZSHRC="$HOME/.zshrc"
-DEL_SOURCE="source \"$SCRIPT_DIR/zsh/del.zsh\""
+DEL_SOURCE="source \"$SCRIPT_DIR/zsh/del/del.zsh\""
 
 echo "Installing mac-dotfiles..."
 echo "Repository: $SCRIPT_DIR"
 
-if [[ ! -f "$SCRIPT_DIR/zsh/del.zsh" ]]; then
-    echo "Error: zsh/del.zsh not found."
+if [[ ! -f "$SCRIPT_DIR/zsh/del/del.zsh" ]]; then
+    echo "Error: zsh/del/del.zsh not found."
     exit 1
 fi
 
