@@ -7,23 +7,8 @@ DRY_RUN=0
 if [[ "${1:-}" == "--dry-run" ]]; then
     DRY_RUN=1
 elif [[ $# -gt 0 ]]; then
-    echo "Usage: mcclean [--dry-run]"
+    echo "Использование: mcclean [--dry-run]"
     exit 1
-fi
-
-if (( ! DRY_RUN )); then
-    echo
-    echo "This will remove only whitelisted caches and Trash contents."
-    read -r -p "Continue? [y/N] " answer
-
-    case "$answer" in
-        y|Y|yes|YES)
-            ;;
-        *)
-            echo "Cancelled."
-            exit 0
-            ;;
-    esac
 fi
 
 hr() {
@@ -32,10 +17,19 @@ hr() {
 
 size_of() {
     local path="$1"
-    if [[ -e "$path" ]]; then
-        du -sh "$path" 2>/dev/null | awk '{print $1}'
-    else
+    local size
+
+    if [[ ! -e "$path" ]]; then
         echo "0B"
+        return
+    fi
+
+    size="$(du -sh "$path" 2>/dev/null | awk '{print $1}')"
+
+    if [[ -n "$size" ]]; then
+        echo "$size"
+    else
+        echo "недоступно"
     fi
 }
 
@@ -45,25 +39,44 @@ remove_path() {
     [[ -e "$path" ]] || return 0
 
     if (( DRY_RUN )); then
-        printf "WOULD REMOVE  %-55s %s\n" "$path" "$(size_of "$path")"
+        printf "Будет удалено: %-50s %s\n" "$path" "$(size_of "$path")"
     else
-        printf "REMOVING      %-55s %s\n" "$path" "$(size_of "$path")"
+        printf "Удаление:      %-50s %s\n" "$path" "$(size_of "$path")"
         rm -rf -- "$path"
     fi
 }
 
+if (( ! DRY_RUN )); then
+    echo
+    echo "Будут очищены только разрешённые безопасные категории."
+    read -r -p "Продолжить? [y/N] " answer
+
+    case "$answer" in
+        y|Y|yes|YES|д|Д|да|ДА)
+            ;;
+        *)
+            echo "Отменено."
+            exit 0
+            ;;
+    esac
+fi
+
 echo
 echo "MAC CLEAN"
-[[ $DRY_RUN -eq 1 ]] && echo "MODE: DRY RUN — NOTHING WILL BE DELETED"
+if (( DRY_RUN )); then
+    echo "РЕЖИМ: DRY RUN — НИЧЕГО НЕ БУДЕТ УДАЛЕНО"
+fi
 hr
 
 echo
-echo "=== SAFE APPLICATION CACHES ==="
+echo "=== КЭШИ ПРИЛОЖЕНИЙ ==="
+
 remove_path "$HOME/.cache/codex-runtimes"
 remove_path "$HOME/Library/Caches/termius-updater"
 
 echo
 echo "=== HOMEBREW ==="
+
 if command -v brew >/dev/null 2>&1; then
     if (( DRY_RUN )); then
         brew cleanup -n
@@ -71,39 +84,134 @@ if command -v brew >/dev/null 2>&1; then
         brew cleanup
     fi
 else
-    echo "Homebrew not installed"
+    echo "Homebrew не установлен"
 fi
 
 echo
-echo "=== USER TRASH ==="
-if (( DRY_RUN )); then
-    echo "Would empty: $HOME/.Trash ($(size_of "$HOME/.Trash"))"
+echo "=== NPM ==="
+
+NPM_CACHE="$HOME/.npm/_cacache"
+NPM_LOGS="$HOME/.npm/_logs"
+
+if command -v npm >/dev/null 2>&1; then
+    if [[ -d "$HOME/.npm" ]]; then
+        echo "Кэш npm: $(size_of "$HOME/.npm")"
+
+        if (( DRY_RUN )); then
+            echo "Будет выполнено: npm cache clean --force"
+        else
+            npm cache clean --force
+        fi
+    else
+        echo "Кэш npm не найден"
+    fi
 else
-    find "$HOME/.Trash" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true
+    echo "npm не установлен"
+
+    remove_path "$NPM_CACHE"
+    remove_path "$NPM_LOGS"
 fi
 
 echo
-echo "=== ROOT TRASH ==="
+echo "=== PIP ==="
+
+PIP_CACHE="$HOME/Library/Caches/pip"
+
+if [[ -d "$PIP_CACHE" ]]; then
+    echo "Кэш pip: $(size_of "$PIP_CACHE")"
+
+    if (( DRY_RUN )); then
+        echo "Будет очищен кэш pip"
+    else
+        if command -v python3 >/dev/null 2>&1 &&
+           python3 -m pip --version >/dev/null 2>&1; then
+            python3 -m pip cache purge
+        else
+            rm -rf -- "$PIP_CACHE"
+        fi
+    fi
+else
+    echo "Кэш pip не найден"
+fi
+
+echo
+echo "=== СТАРЫЕ ПОЛЬЗОВАТЕЛЬСКИЕ ЛОГИ (>30 ДНЕЙ) ==="
+
+LOG_DIR="$HOME/Library/Logs"
+
+if [[ -d "$LOG_DIR" ]]; then
+    if (( DRY_RUN )); then
+        find "$LOG_DIR" \
+            -type f \
+            -mtime +30 \
+            \( -name "*.log" -o -name "*.odl" -o -name "*.jsonl" \) \
+            ! -name "vpn-auto-fix.log" \
+            -print 2>/dev/null
+    else
+        find "$LOG_DIR" \
+            -type f \
+            -mtime +30 \
+            \( -name "*.log" -o -name "*.odl" -o -name "*.jsonl" \) \
+            ! -name "vpn-auto-fix.log" \
+            -delete 2>/dev/null || true
+    fi
+else
+    echo "Каталог логов не найден"
+fi
+
+echo
+echo "=== СТАРЫЕ ВРЕМЕННЫЕ ФАЙЛЫ (>7 ДНЕЙ) ==="
+
+if (( DRY_RUN )); then
+    find /private/tmp \
+        -mindepth 1 \
+        -mtime +7 \
+        -user "$USER" \
+        -print 2>/dev/null
+else
+    find /private/tmp \
+        -mindepth 1 \
+        -mtime +7 \
+        -user "$USER" \
+        -delete 2>/dev/null || true
+fi
+
+echo
+echo "=== ПОЛЬЗОВАТЕЛЬСКАЯ КОРЗИНА ==="
+
+if (( DRY_RUN )); then
+    echo "Будет очищена: $HOME/.Trash ($(size_of "$HOME/.Trash"))"
+else
+    find "$HOME/.Trash" \
+        -mindepth 1 \
+        -maxdepth 1 \
+        -exec rm -rf -- {} + 2>/dev/null || true
+fi
+
+echo
+echo "=== СИСТЕМНАЯ КОРЗИНА ROOT ==="
 
 if (( DRY_RUN )); then
     if sudo -n true 2>/dev/null; then
         sudo du -sh /private/var/root/.Trash 2>/dev/null || true
     else
-        echo "Root Trash: requires sudo to inspect"
+        echo "Для просмотра размера требуется sudo"
     fi
-    echo "Would empty root Trash"
+
+    echo "Будет очищена системная Корзина root"
 else
     sudo find /private/var/root/.Trash \
-        -mindepth 1 -maxdepth 1 \
+        -mindepth 1 \
+        -maxdepth 1 \
         -exec rm -rf -- {} + 2>/dev/null || true
 fi
 
 hr
 
 if (( DRY_RUN )); then
-    echo "DRY RUN COMPLETE — NOTHING WAS DELETED"
+    echo "DRY RUN ЗАВЕРШЁН — НИЧЕГО НЕ УДАЛЕНО"
 else
-    echo "CLEAN COMPLETE"
+    echo "ОЧИСТКА ЗАВЕРШЕНА"
 fi
 
 echo
