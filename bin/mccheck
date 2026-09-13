@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+
+set -u
+
+hr() {
+    printf '%*s\n' "${COLUMNS:-70}" '' | tr ' ' '-'
+}
+
+size_of() {
+    local path="$1"
+    if [[ -e "$path" ]]; then
+        du -sh "$path" 2>/dev/null | awk '{print $1}'
+    else
+        echo "0B"
+    fi
+}
+
+echo
+echo "MAC CLEAN CHECK"
+echo "$(date '+%Y-%m-%d %H:%M:%S')"
+hr
+
+echo
+echo "=== DISK ==="
+echo "System volume:"
+df -h / | awk 'NR==1 || NR==2'
+echo
+echo "Data volume:"
+df -h /System/Volumes/Data | awk 'NR==1 || NR==2'
+
+echo
+echo "=== USER CACHE: ~/Library/Caches ==="
+echo "Total: $(size_of "$HOME/Library/Caches")"
+du -sh "$HOME/Library/Caches/"* 2>/dev/null |
+    sort -h |
+    tail -15
+
+echo
+echo "=== CLI CACHE: ~/.cache ==="
+echo "Total: $(size_of "$HOME/.cache")"
+if [[ -d "$HOME/.cache" ]]; then
+    du -sh "$HOME/.cache/"* 2>/dev/null |
+        sort -h |
+        tail -15
+fi
+
+echo
+echo "=== USER TRASH ==="
+echo "~/.Trash: $(size_of "$HOME/.Trash")"
+
+echo
+echo "=== ROOT TRASH ==="
+if sudo -n true 2>/dev/null; then
+    sudo du -sh /private/var/root/.Trash 2>/dev/null || echo "Unavailable"
+else
+    echo "Need sudo to inspect:"
+    echo "sudo du -sh /private/var/root/.Trash"
+fi
+
+echo
+echo "=== HOMEBREW ==="
+if command -v brew >/dev/null 2>&1; then
+    BREW_CACHE="$(brew --cache 2>/dev/null)"
+    echo "Cache path: $BREW_CACHE"
+    echo "Cache size: $(size_of "$BREW_CACHE")"
+    echo
+    echo "brew cleanup --dry-run:"
+    brew cleanup -n 2>/dev/null | tail -20
+else
+    echo "Homebrew not installed"
+fi
+
+echo
+echo "=== TEMP ==="
+echo "/private/tmp: $(size_of "/private/tmp")"
+echo "/private/var/tmp: $(size_of "/private/var/tmp")"
+
+echo
+echo "=== USER LOGS ==="
+echo "Total: $(size_of "$HOME/Library/Logs")"
+du -sh "$HOME/Library/Logs/"* 2>/dev/null |
+    sort -h |
+    tail -10
+
+echo
+echo "=== XCODE / DEVELOPER ==="
+for path in \
+    "$HOME/Library/Developer/Xcode/DerivedData" \
+    "$HOME/Library/Developer/Xcode/Archives" \
+    "$HOME/Library/Developer/CoreSimulator"
+do
+    if [[ -e "$path" ]]; then
+        printf '%-55s %s\n' "$path" "$(size_of "$path")"
+    fi
+done
+
+echo
+echo "=== iPHONE / iPAD BACKUPS ==="
+IOS_BACKUPS="$HOME/Library/Application Support/MobileSync/Backup"
+if [[ -d "$IOS_BACKUPS" ]]; then
+    echo "$IOS_BACKUPS: $(size_of "$IOS_BACKUPS")"
+else
+    echo "No local iOS backups"
+fi
+
+echo
+echo "=== PACKAGE / TOOL CACHES ==="
+for path in \
+    "$HOME/.npm" \
+    "$HOME/.pnpm-store" \
+    "$HOME/.yarn" \
+    "$HOME/.cache/pip" \
+    "$HOME/Library/Caches/pip" \
+    "$HOME/.cargo/registry" \
+    "$HOME/.gradle/caches"
+do
+    if [[ -e "$path" ]]; then
+        printf '%-50s %s\n' "$path" "$(size_of "$path")"
+    fi
+done
+
+echo
+echo "=== LOCAL TIME MACHINE SNAPSHOTS ==="
+SNAPSHOTS="$(tmutil listlocalsnapshots / 2>/dev/null | grep -c '^com.apple.TimeMachine' || true)"
+echo "Count: $SNAPSHOTS"
+tmutil listlocalsnapshots / 2>/dev/null | tail -10
+
+echo
+echo "=== LARGE FILES IN DOWNLOADS (>500 MB) ==="
+if [[ -d "$HOME/Downloads" ]]; then
+    find "$HOME/Downloads" -type f -size +500M -print0 2>/dev/null |
+        xargs -0 -I{} du -h "{}" 2>/dev/null |
+        sort -h |
+        tail -15
+fi
+
+echo
+hr
+echo "CHECK COMPLETE — NOTHING WAS DELETED"
+echo

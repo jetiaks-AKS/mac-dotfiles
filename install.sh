@@ -40,5 +40,17 @@ else
     echo "workdirs.zsh is already configured."
 fi
 
+BIN_DIR="$SCRIPT_DIR/bin"
+
+if [[ -x "$BIN_DIR/mccheck" ]]; then
+    sudo ln -sf "$BIN_DIR/mccheck" /usr/local/bin/mccheck
+    echo "Installed mccheck -> /usr/local/bin/mccheck"
+fi
+
+if [[ -x "$BIN_DIR/mcclean" ]]; then
+    sudo ln -sf "$BIN_DIR/mcclean" /usr/local/bin/mcclean
+    echo "Installed mcclean -> /usr/local/bin/mcclean"
+fi
+
 echo "Installation complete."
 echo "Run: source ~/.zshrc"

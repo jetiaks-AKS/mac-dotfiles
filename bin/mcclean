@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+set -u
+
+DRY_RUN=0
+
+if [[ "${1:-}" == "--dry-run" ]]; then
+    DRY_RUN=1
+elif [[ $# -gt 0 ]]; then
+    echo "Usage: mcclean [--dry-run]"
+    exit 1
+fi
+
+if (( ! DRY_RUN )); then
+    echo
+    echo "This will remove only whitelisted caches and Trash contents."
+    read -r -p "Continue? [y/N] " answer
+
+    case "$answer" in
+        y|Y|yes|YES)
+            ;;
+        *)
+            echo "Cancelled."
+            exit 0
+            ;;
+    esac
+fi
+
+hr() {
+    printf '%*s\n' "${COLUMNS:-70}" '' | tr ' ' '-'
+}
+
+size_of() {
+    local path="$1"
+    if [[ -e "$path" ]]; then
+        du -sh "$path" 2>/dev/null | awk '{print $1}'
+    else
+        echo "0B"
+    fi
+}
+
+remove_path() {
+    local path="$1"
+
+    [[ -e "$path" ]] || return 0
+
+    if (( DRY_RUN )); then
+        printf "WOULD REMOVE  %-55s %s\n" "$path" "$(size_of "$path")"
+    else
+        printf "REMOVING      %-55s %s\n" "$path" "$(size_of "$path")"
+        rm -rf -- "$path"
+    fi
+}
+
+echo
+echo "MAC CLEAN"
+[[ $DRY_RUN -eq 1 ]] && echo "MODE: DRY RUN — NOTHING WILL BE DELETED"
+hr
+
+echo
+echo "=== SAFE APPLICATION CACHES ==="
+remove_path "$HOME/.cache/codex-runtimes"
+remove_path "$HOME/Library/Caches/termius-updater"
+
+echo
+echo "=== HOMEBREW ==="
+if command -v brew >/dev/null 2>&1; then
+    if (( DRY_RUN )); then
+        brew cleanup -n
+    else
+        brew cleanup
+    fi
+else
+    echo "Homebrew not installed"
+fi
+
+echo
+echo "=== USER TRASH ==="
+if (( DRY_RUN )); then
+    echo "Would empty: $HOME/.Trash ($(size_of "$HOME/.Trash"))"
+else
+    find "$HOME/.Trash" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true
+fi
+
+echo
+echo "=== ROOT TRASH ==="
+
+if (( DRY_RUN )); then
+    if sudo -n true 2>/dev/null; then
+        sudo du -sh /private/var/root/.Trash 2>/dev/null || true
+    else
+        echo "Root Trash: requires sudo to inspect"
+    fi
+    echo "Would empty root Trash"
+else
+    sudo find /private/var/root/.Trash \
+        -mindepth 1 -maxdepth 1 \
+        -exec rm -rf -- {} + 2>/dev/null || true
+fi
+
+hr
+
+if (( DRY_RUN )); then
+    echo "DRY RUN COMPLETE — NOTHING WAS DELETED"
+else
+    echo "CLEAN COMPLETE"
+fi
+
+echo
