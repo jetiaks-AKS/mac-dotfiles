@@ -135,6 +135,29 @@ if [[ -d "$HOME/Downloads" ]]; then
 fi
 
 echo
+echo "=== ИТОГ ==="
+
+summary_size() {
+    local path="$1"
+    local size
+
+    if [[ -e "$path" ]]; then
+        size="$(du -sh "$path" 2>/dev/null | awk '{print $1}')"
+        echo "${size:-недоступно}"
+    else
+        echo "0B"
+    fi
+}
+
+echo "Пользовательские кэши: $(summary_size "$HOME/Library/Caches")"
+echo "CLI-кэши:              $(summary_size "$HOME/.cache")"
+echo "Homebrew:               $(summary_size "$HOME/Library/Caches/Homebrew")"
+echo "npm:                    $(summary_size "$HOME/.npm")"
+echo "pip:                    $(summary_size "$HOME/Library/Caches/pip")"
+echo "Логи:                   $(summary_size "$HOME/Library/Logs")"
+echo "Временные файлы:        $(summary_size "/private/tmp")"
+echo "Корзина:                $(summary_size "$HOME/.Trash")"
+
 hr
 echo "CHECK COMPLETE — NOTHING WAS DELETED"
 echo
